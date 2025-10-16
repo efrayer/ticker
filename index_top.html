@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NCAA MBB — Previous Day Scores</title>
+  <style>
+    :root {
+      --bg: #0b1320; /* deep navy */
+      --card: #121a2a;
+      --ink: #e8f0ff;
+      --muted: #8da2c0;
+      --accent: #6aa9ff;
+      --ok: #7ae582;
+      --warn: #ffcc66;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(1200px 600px at 20% -10%, #1a2846, transparent), var(--bg);
+      color: var(--ink); display: grid; place-items: center center; gap: 0; padding: 12px;
+    }
+    header { width: min(1100px, 92vw); }
+    h1 { margin: 0 0 6px; font-weight: 800; letter-spacing: 0.3px; }
+    .sub { color: var(--muted); margin-top: 0; }
+    .card {
+      width: min(1100px, 92vw);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px; padding: 14px 16px; overflow: hidden;
+    }
+    /* Ticker */
+    .ticker-wrap { position: relative; height: 48px; }
+    .ticker {
+      position: absolute; white-space: nowrap; will-change: transform; display: inline-block;
+      animation: slide 180s linear infinite;
+    }
+    .ticker:hover { animation-play-state: paused; }
+    .ticker-wrap:hover .ticker { opacity: 0.6; filter: saturate(80%); }
+    .ticker-wrap{ position: relative; }
+    .ticker-wrap:hover::after {
+      content: "⏸";
+      position: absolute; right: 10px; top: 8px;
+      font-size: 18px; line-height: 1; opacity: 0.8;
+      background: rgba(0,0,0,0.35); padding: 4px 6px; border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .logo { width: 18px; height: 18px; object-fit: contain; vertical-align: -3px; border-radius: 3px; margin-right: 6px; }
+    .logo-sm { width: 14px; height: 14px; object-fit: contain; vertical-align: -2px; border-radius: 3px; margin-right: 6px; }
+    .win { color: #ffd700; font-weight: 800; }
+    .sep { opacity: 0.5; padding: 0 6px; }
+    .rank { display:inline-block; font-weight:800; font-size:12px; padding:2px 6px; border-radius:999px; border:1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); margin-right:6px; color:#ffffff; }
+    @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @keyframes slideReverse { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+    /* Vertical divider spanning both lines */
+    .seg { position: relative; display: inline-block; padding: 0 18px; line-height: 1.15; }
+    .seg::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: -2px;
+      bottom: -2px;
+      width: 2px; /* thicker divider */
+      background: #ffffff; /* solid white */
+      opacity: 0.95;
+    }
+    .seg:last-child::after { display: none; }
+    /* Respect reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .ticker { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  
+
+  <section class="card">
+    <div class="ticker-wrap">
+      <div class="ticker" id="ticker">Loading…</div>
+    </div>
+  </section>
+
+  
+
+  <script>
+    // --- Helpers for date/anchor ---
+    function getQueryParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+    const DEV_ANCHOR = '2025-01-12'; // temporary dev anchor; set to null for prod
+    function getHashParam(name) {
+      if (!location.hash) return null;
+      const hash = location.hash.replace(/^#/, '');
+      const params = new URLSearchParams(hash);
+      return params.get(name);
+    }
+    function parseAnchorYMD(s) {
+      if (!s || typeof s !== 'string') return null;
+      const parts = s.split('-');
+      if (parts.length !== 3) return null;
+      const [yy, mm, dd] = parts.map(n => Number(n));
+      if (!Number.isInteger(yy) || !Number.isInteger(mm) || !Number.isInteger(dd)) return null;
+      if (yy < 1900 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+      return { yy, mm, dd };
+    }
+    function getPrevDayFromAnchor(tz, anchorStr) {
+      const parsed = parseAnchorYMD(anchorStr);
+      let anchorDate;
+      if (parsed) {
+        anchorDate = new Date(Date.UTC(parsed.yy, parsed.mm - 1, parsed.dd, 5));
+      } else {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+        const parts = fmt.formatToParts(now);
+        const y = Number(parts.find(p=>p.type==='year').value);
+        const m = Number(parts.find(p=>p.type==='month').value);
+        const d = Number(parts.find(p=>p.type==='day').value);
+        anchorDate = new Date(Date.UTC(y, m - 1, d, 5));
+      }
+      const prev = new Date(anchorDate.getTime() - 24*60*60*1000);
+      const yFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+      const yStr = yFmt.format(prev); // YYYY-MM-DD
+      const [Y,MM,DD] = yStr.split('-');
+      return { Y, MM, DD, ymd: yStr, ymdCompact: `${Y}${MM}${DD}` };
+    }
+
+    const tz = 'America/New_York';
+    const anchor = getQueryParam('anchor') || getHashParam('anchor') || DEV_ANCHOR;
+    const { Y, MM, DD, ymd, ymdCompact } = getPrevDayFromAnchor(tz, anchor);
+    const subEl = document.getElementById('subtitle');
+    if (subEl) {
+      const sub = anchor
+        ? `Anchor Date ${anchor} → showing PREVIOUS day: ${ymd} (America/New_York)`
+        : `Showing results for ${ymd} (America/New_York)`;
+      subEl.textContent = sub;
+    }
+
+    // --- Data sources (ESPN first to capture ranks) ---
+    const sources = [ // ESPN first so ranks are embedded directly
+      {
+        name: 'ESPN Scoreboard (Top25)',
+        url: `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=${ymdCompact}&groups=50&limit=500`,
+        mapper: (json) => {
+          const evts = json?.events || [];
+          console.debug('[ESPN Top25] events:', evts.length);
+          return evts.map(e => {
+            const c = e.competitions?.[0];
+            const comps = c?.competitors || [];
+            const away = comps.find(t => t.homeAway === 'away');
+            const home = comps.find(t => t.homeAway === 'home');
+            const status = c?.status?.type?.name || e.status?.type?.name || '';
+            const isFinal = /final/i.test(status);
+            const aLogo = away?.team?.logos?.[0]?.href || away?.team?.logo || null;
+            const hLogo = home?.team?.logos?.[0]?.href || home?.team?.logo || null;
+            const aRank = away?.team?.rank ?? away?.curatedRank?.current ?? null;
+            const hRank = home?.team?.rank ?? home?.curatedRank?.current ?? null;
+            return {
+              away: away?.team?.shortDisplayName || away?.team?.displayName || 'Away',
+              home: home?.team?.shortDisplayName || home?.team?.displayName || 'Home',
+              aScore: Number(away?.score ?? NaN),
+              hScore: Number(home?.score ?? NaN),
+              aLogo,
+              hLogo,
+              aRank: (Number(aRank) >= 1 && Number(aRank) <= 25) ? Number(aRank) : null,
+              hRank: (Number(hRank) >= 1 && Number(hRank) <= 25) ? Number(hRank) : null,
+              status: isFinal ? 'Final' : status
+            };
+          }).filter(g => g.status === 'Final');
+        }
+      },
+      {
+        name: 'ESPN Scoreboard (All DI fallback)',
+        url: `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=${ymdCompact}&limit=500`,
+        mapper: (json) => {
+          const evts = json?.events || [];
+          console.debug('[ESPN All] events:', evts.length);
+          return evts.map(e => {
+            const c = e.competitions?.[0];
+            const comps = c?.competitors || [];
+            const away = comps.find(t => t.homeAway === 'away');
+            const home = comps.find(t => t.homeAway === 'home');
+            const status = c?.status?.type?.name || e.status?.type?.name || '';
+            const isFinal = /final/i.test(status);
+            const aLogo = away?.team?.logos?.[0]?.href || away?.team?.logo || null;
+            const hLogo = home?.team?.logos?.[0]?.href || home?.team?.logo || null;
+            const aRank = away?.team?.rank ?? away?.curatedRank?.current ?? null;
+            const hRank = home?.team?.rank ?? home?.curatedRank?.current ?? null;
+            return {
+              away: away?.team?.shortDisplayName || away?.team?.displayName || 'Away',
+              home: home?.team?.shortDisplayName || home?.team?.displayName || 'Home',
+              aScore: Number(away?.score ?? NaN),
+              hScore: Number(home?.score ?? NaN),
+              aLogo,
+              hLogo,
+              aRank: (Number(aRank) >= 1 && Number(aRank) <= 25) ? Number(aRank) : null,
+              hRank: (Number(hRank) >= 1 && Number(hRank) <= 25) ? Number(hRank) : null,
+              status: isFinal ? 'Final' : status
+            };
+          }).filter(g => g.status === 'Final');
+        }
+      },
+      {
+        name: 'NCAA API (henrygd)',
+        url: `https://ncaa-api.henrygd.me/scoreboard/basketball-men/d1/${Y}/${MM}/${DD}`,
+        mapper: (json) => {
+          if (!json || !Array.isArray(json.games)) return [];
+          return json.games
+            .filter(g => g.final === true || /final/i.test(g.status || ''))
+            .map(g => {
+              const away = g.teams.find(t => !t.isHome);
+              const home = g.teams.find(t => t.isHome);
+              return {
+                away: away?.shortName || away?.name || 'Away',
+                home: home?.shortName || home?.name || 'Home',
+                aScore: Number(away?.score ?? NaN),
+                hScore: Number(home?.score ?? NaN),
+                aLogo: null,
+                hLogo: null,
+                aRank: null,
+                hRank: null,
+                status: 'Final'
+              };
+            });
+        }
+      }
+    ];
+
+    async function fetchFirstWorking() {
+      for (const s of sources) {
+        try {
+          const res = await fetch(s.url, { cache: 'no-store' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          const games = s.mapper(json);
+          if (Array.isArray(games) && games.length) {
+            window.__lastSource = s.name;
+            return { games, source: s.name, url: s.url };
+          }
+        } catch (err) {
+          // try next source
+        }
+      }
+      throw new Error('No data sources responded');
+    }
+
+    async function fetchRankMap() {
+      // Build a map of team name -> rank (1-25) for the day. Try Top25 feed first, then fall back to full DI.
+      const urls = [
+        `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=${ymdCompact}&groups=50&limit=500`,
+        `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=${ymdCompact}&limit=500`
+      ];
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) throw new Error('rank HTTP ' + res.status);
+          const data = await res.json();
+          const evts = data?.events || [];
+          if (!evts.length) continue; // try next URL
+          const map = Object.create(null);
+          evts.forEach(e => {
+            const c = e.competitions?.[0];
+            (c?.competitors || []).forEach(t => {
+              const names = [
+                (t?.team?.shortDisplayName || ''),
+                (t?.team?.displayName || ''),
+                (t?.team?.name || ''),
+                (t?.team?.abbreviation || '')
+              ];
+              const r = t?.team?.rank ?? t?.curatedRank?.current ?? null;
+              const rn = Number(r);
+              if (rn >= 1 && rn <= 25) {
+                names.map(n => n.trim().toLowerCase()).filter(Boolean).forEach(n => { map[n] = rn; });
+              }
+            });
+          });
+          console.debug('Rank map built from', url.includes('groups=50') ? 'Top25' : 'All', 'entries:', Object.keys(map).length);
+          if (Object.keys(map).length) return map; // good map
+        } catch (e) {
+          console.warn('fetchRankMap attempt failed', url, e);
+        }
+      }
+      return {};
+    }
+
+    function nameWithRank(name, rank) {
+      return (rank && rank >= 1 && rank <= 25)
+        ? `<span class="rank">#${rank}</span>${name}`
+        : `${name}`;
+    }
+
+    // --- Rank helper ---
+    function getRank(name, embeddedRank, rankMap){
+      const nr = Number(embeddedRank);
+      if (Number.isFinite(nr) && nr >= 1 && nr <= 25) return nr; // honor embedded ESPN rank
+      const k = (name||'').trim().toLowerCase();
+      return rankMap[k] ?? null; // strict #1–#25 only
+    }
+
+    // Dynamically adjust ticker speed based on content width (default ~35px/sec)
+    function getScrollSpeedParam(){
+      const s = Number(getQueryParam('speed'));
+      return (Number.isFinite(s) && s >= 10 && s <= 200) ? s : 35;
+    }
+    function setTickerSpeed(){
+      const wrap = document.querySelector('.ticker-wrap');
+      const el = document.getElementById('ticker');
+      if(!wrap || !el) return;
+      const pxPerSec = getScrollSpeedParam();
+      // distance accounts for duplicated content + viewport width for seamless loop
+      const distance = Math.max(1, (el.scrollWidth / 2) + wrap.clientWidth);
+      const duration = Math.max(30, Math.min(600, Math.round(distance / pxPerSec)));
+      el.style.animationDuration = duration + 's';
+    }
+    let _tickerResizeTO = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(_tickerResizeTO);
+      _tickerResizeTO = setTimeout(setTickerSpeed, 150);
+    });
+
+    function render(games, rankMap) {
+      // Sort by winner margin desc for ticker order
+      games.sort((a,b) => Math.abs((b.hScore - b.aScore)) - Math.abs((a.hScore - a.aScore)));
+      const ticker = document.getElementById('ticker');
+      ticker.innerHTML = '';
+
+      function logoTag(url, size='sm') {
+        if (!url) return '';
+        const cls = size === 'sm' ? 'logo-sm' : 'logo';
+        return `<img class="${cls}" src="${url}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
+      }
+
+      function segment(g) {
+        const a = Number(g.aScore), h = Number(g.hScore);
+        const awayWins = a > h;
+        const aRank = getRank(g.away, g.aRank, rankMap);
+        const hRank = getRank(g.home, g.hRank, rankMap);
+        const aName = nameWithRank(g.away, aRank);
+        const hName = nameWithRank(g.home, hRank);
+        const aLine = `${logoTag(g.aLogo,'sm')}${aName} ${g.aScore}`;
+        const hLine = `${logoTag(g.hLogo,'sm')}${hName} ${g.hScore}`;
+        const top = awayWins ? `<span class="win">${aLine}</span>` : aLine;
+        const bottom = awayWins ? hLine : `<span class="win">${hLine}</span>`;
+        return `<span class="seg">${top}<br>${bottom}</span>`;
+      }
+
+      const topOnly = games.filter(g => {
+        const aRank = getRank(g.away, g.aRank, rankMap);
+        const hRank = getRank(g.home, g.hRank, rankMap);
+        return (aRank && aRank<=25) || (hRank && hRank<=25);
+      });
+      const displayGames = topOnly.length ? topOnly : games;
+      const segs = displayGames.map(segment);
+      const joined = segs.join('');
+      ticker.innerHTML = (' ' + joined + ' ').repeat(6);
+      setTickerSpeed();
+      // (Ranked summary removed for clean ticker)
+
+    }
+
+    (async () => {
+      try {
+        const [{ games }, rankMap] = await Promise.all([fetchFirstWorking(), fetchRankMap()]);
+        render(games, rankMap || {});
+      } catch (e) {
+        const ticker = document.getElementById('ticker');
+        ticker.textContent = 'Failed to load scores. Try refreshing later.';
+        console.error(e);
+      }
+    })();
+
+    // ---- Lightweight self-tests (console only) ----
+    (function runSelfTests(){
+      try {
+        // date helpers
+        console.assert(typeof parseAnchorYMD('2025-01-12') === 'object', 'parseAnchorYMD failed');
+        console.assert(parseAnchorYMD('bad-date') === null, 'parseAnchorYMD should return null on bad input');
+        const prev = getPrevDayFromAnchor('America/New_York','2025-01-12');
+        console.assert(prev && typeof prev.ymdCompact === 'string' && prev.ymdCompact.length === 8, 'getPrevDayFromAnchor failed (ymdCompact)');
+        // rank labeler
+        console.assert(nameWithRank('UConn', 1).includes('#1'), 'nameWithRank should include # when rank present');
+        console.assert(nameWithRank('UConn', null).startsWith('UConn'), 'nameWithRank should leave name unchanged when rank null');
+        // data source shape
+        console.assert(Array.isArray(sources) && sources.length >= 1, 'sources not defined');
+        console.assert(sources[0].url.includes('groups=50'), 'ESPN URL must include groups=50');
+        console.assert(typeof fetchRankMap === 'function', 'fetchRankMap should be defined');
+        // quick rank lookup tests (single map to avoid redeclaration)
+        const _testMap = { 'duke': 3, 'duke blue devils': 3 };
+        console.assert(getRank('Duke', null, _testMap) === 3, 'getRank should find Duke');
+        console.assert(getRank('Duke Blue Devils', null, _testMap) === 3, 'getRank should find long name');
+      } catch (tErr) {
+        console.warn('Self-test warning:', tErr);
+      }
+    })();
+  </script>
+</body>
+</html>
