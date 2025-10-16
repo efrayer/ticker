@@ -65,7 +65,7 @@
       background: #ffffff; /* solid white */
       opacity: 0.95;
     }
-    .seg:last-child::after { display: none; } }
+    .seg:last-child::after { display: none; }
   </style>
 </head>
 <body>
@@ -81,13 +81,23 @@
     </div>
   </section>
 
+  <!-- Ranked teams summary (collapsible) -->
+  <section class="card" id="rankSummaryCard" style="display:none">
+    <details id="rankDetails" open>
+      <summary style="cursor:pointer;font-weight:700">Ranked teams & matchups for this day</summary>
+      <div id="rankSummary" class="sub" style="margin-top:8px"></div>
+      <ul id="rankList" style="margin:8px 0 0 18px; padding:0 0 0 8px"></ul>
+      <div id="upsetBlock" style="margin-top:8px"></div>
+    </details>
+  </section>
+
   <script>
     // --- Helpers for date/anchor ---
     function getQueryParam(name) {
       const params = new URLSearchParams(window.location.search);
       return params.get(name);
     }
-    const DEV_ANCHOR = '2025-03-24'; // temporary dev anchor; set to null for prod
+    const DEV_ANCHOR = '2025-01-22'; // temporary dev anchor; set to null for prod
     function getHashParam(name) {
       if (!location.hash) return null;
       const hash = location.hash.replace(/^#/, '');
@@ -237,9 +247,8 @@
     }
 
     function render(games, rankMap) {
-      // Sort by winner margin desc
+      // Sort by winner margin desc for ticker order
       games.sort((a,b) => Math.abs((b.hScore - b.aScore)) - Math.abs((a.hScore - a.aScore)));
-      // Ticker with winner highlighted in gold
       const ticker = document.getElementById('ticker');
       ticker.innerHTML = '';
 
@@ -266,6 +275,61 @@
       const segs = games.map(segment);
       const joined = segs.join('');
       ticker.innerHTML = (' ' + joined + ' ').repeat(6);
+
+      // ---- Ranked summary panel ----
+      // Build set of ranked teams that actually appear in these games
+      const appearSet = new Map(); // key lowercased name -> {name, rank}
+      games.forEach(g => {
+        const aKey = (g.away||'').trim().toLowerCase();
+        const hKey = (g.home||'').trim().toLowerCase();
+        const aRank = g.aRank ?? rankMap[aKey] ?? null;
+        const hRank = g.hRank ?? rankMap[hKey] ?? null;
+        if (aRank && aRank>=1 && aRank<=25) appearSet.set(aKey, {name:g.away, rank:aRank});
+        if (hRank && hRank>=1 && hRank<=25) appearSet.set(hKey, {name:g.home, rank:hRank});
+      });
+
+      const rankedTeams = Array.from(appearSet.values()).sort((x,y)=>x.rank-y.rank);
+      const rankedMatchups = games.filter(g => {
+        const aKey = (g.away||'').trim().toLowerCase();
+        const hKey = (g.home||'').trim().toLowerCase();
+        const aRank = g.aRank ?? rankMap[aKey] ?? null;
+        const hRank = g.hRank ?? rankMap[hKey] ?? null;
+        return (aRank && aRank<=25) || (hRank && hRank<=25);
+      });
+
+      const card = document.getElementById('rankSummaryCard');
+      const list = document.getElementById('rankList');
+      const summary = document.getElementById('rankSummary');
+      const upsetBlock = document.getElementById('upsetBlock');
+
+      if (rankedTeams.length) {
+        card.style.display = '';
+        summary.innerHTML = `${rankedTeams.length} Top-25 team(s) appeared across ${rankedMatchups.length} game(s).`;
+        list.innerHTML = rankedTeams.map(t=>`<li>#${t.rank} ${t.name}</li>`).join('');
+
+        // Upsets: unranked over ranked, or higher number beats lower number
+        const upsets = [];
+        games.forEach(g => {
+          const aKey = (g.away||'').trim().toLowerCase();
+          const hKey = (g.home||'').trim().toLowerCase();
+          const aRank = g.aRank ?? rankMap[aKey] ?? null;
+          const hRank = g.hRank ?? rankMap[hKey] ?? null;
+          const a = Number(g.aScore), h = Number(g.hScore);
+          const awayWins = a > h;
+          const winner = awayWins ? {team:g.away, rank:aRank, score:a} : {team:g.home, rank:hRank, score:h};
+          const loser  = awayWins ? {team:g.home, rank:hRank, score:h} : {team:g.away, rank:aRank, score:a};
+          const isRankedGame = (aRank && aRank<=25) || (hRank && hRank<=25);
+          if (!isRankedGame) return;
+          const upset = (winner.rank==null && loser.rank!=null) ||
+                        (winner.rank!=null && loser.rank!=null && winner.rank > loser.rank);
+          if (upset) {
+            upsets.push(`${winner.team} def. ${loser.team} (${loser.rank ? '#'+loser.rank : 'unranked'})`);
+          }
+        });
+        upsetBlock.innerHTML = upsets.length ? `<div><strong>Upsets:</strong><br>${upsets.map(u=>`• ${u}`).join('<br>')}</div>` : '';
+      } else {
+        card.style.display = 'none';
+      }
     }
 
     (async () => {
