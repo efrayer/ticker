@@ -37,7 +37,6 @@
       animation: slide 75s linear infinite;
     }
     .ticker:hover { animation-play-state: paused; }
-    /* Hover pause visuals */
     .ticker-wrap:hover .ticker { opacity: 0.6; filter: saturate(80%); }
     .ticker-wrap{ position: relative; }
     .ticker-wrap:hover::after {
@@ -47,145 +46,98 @@
       background: rgba(0,0,0,0.35); padding: 4px 6px; border-radius: 6px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.35);
     }
-    .pill {
-      display: inline-flex; align-items: center; gap: 10px; margin: 0 24px; font-weight: 700;
-      padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.08);
-    }
-    .sep { opacity: 0.5; padding: 0 6px; }
-    @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-
-    @keyframes slideReverse { from { transform: translateX(-50%); } to { transform: translateX(0); } }
-
-    /* Table */
-    table { width: 100%; border-collapse: collapse; }
-    thead th { text-align: left; color: var(--muted); font-weight: 600; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    tbody td { padding: 10px 8px; border-bottom: 1px dashed rgba(255,255,255,0.06); }
-    .final { color: var(--ok); font-weight: 700; }
-    .status { color: var(--warn); }
-    .src { color: var(--muted); font-size: 12px; margin-top: 10px; }
-    .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); }
-    .footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 4px; display:none; }
-    .tip-row { color: var(--muted); font-size: 12px; font-weight: 500; text-align: left; }
-    .tip-row code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; opacity: 0.9; }  .win { color: #ffd700; font-weight: 800; }
     .logo { width: 18px; height: 18px; object-fit: contain; vertical-align: -3px; border-radius: 3px; margin-right: 6px; }
     .logo-sm { width: 14px; height: 14px; object-fit: contain; vertical-align: -2px; border-radius: 3px; margin-right: 6px; }
-      .seg { display:inline-block; padding: 0 14px; }
-    .teamline { display:block; }
+    .win { color: #ffd700; font-weight: 800; }
+    .sep { opacity: 0.5; padding: 0 6px; }
+    .rank { display:inline-block; font-weight:800; font-size:12px; padding:2px 6px; border-radius:999px; border:1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); margin-right:6px; }
+    @keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @keyframes slideReverse { from { transform: translateX(-50%); } to { transform: translateX(0); } }
+    /* Vertical divider spanning both lines */
+    .seg { position: relative; display: inline-block; padding: 0 18px; line-height: 1.15; }
+    .seg::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: -2px;
+      bottom: -2px;
+      width: 2px; /* thicker divider */
+      background: #ffffff; /* solid white */
+      opacity: 0.95;
+    }
+    .seg:last-child::after { display: none; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>NCAA D‑I Men’s Basketball — Previous Day Scores</h1>
+    <h1>NCAA D-I Men’s Basketball — Previous Day Scores</h1>
     <h2>UnderFourCreative.com</h2>
     <p class="sub" id="subtitle">Loading date…</p>
   </header>
 
   <section class="card">
     <div class="ticker-wrap">
-      <div class="ticker" id="ticker"></div>
+      <div class="ticker" id="ticker">Loading…</div>
     </div>
   </section>
 
-  <section class="card">
-    <table>
-      <thead>
-        <tr>
-          <th colspan="3" class="tip-row">Tip: hover the ticker to slow the scroll • This page shows yesterday (ET).</th>
-        </tr>
-        <tr>
-          <th style="width:42%">Away</th>
-          <th style="width:42%">Home</th>
-          <th style="width:16%">Result</th>
-        </tr>
-      </thead>
-      <tbody id="rows">
-        <tr><td colspan="3">Fetching…</td></tr>
-      </tbody>
-    </table>
-    <div class="src" id="sourceNote"></div>
-  </section>
-
-  
-
   <script>
-    // Get yesterday in America/New_York (handles DST correctly using Intl)
-    function getYesterdayInTZ(tz) {
-      const now = new Date();
-      // Format parts for the requested tz
-      const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-      const parts = fmt.formatToParts(now);
-      const y = Number(parts.find(p=>p.type==='year').value);
-      const m = Number(parts.find(p=>p.type==='month').value);
-      const d = Number(parts.find(p=>p.type==='day').value);
-      // Create a Date in that tz at local midnight, then subtract one day in ms
-      const atMid = new Date(Date.UTC(y, m-1, d, 5)); // EST≈UTC-5 baseline; good enough for midnight roll
-      const yest = new Date(atMid.getTime() - 24*60*60*1000);
+    // --- Helpers for date/anchor ---
+    function getQueryParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+    const DEV_ANCHOR = '2025-03-24'; // temporary dev anchor; set to null for prod
+    function getHashParam(name) {
+      if (!location.hash) return null;
+      const hash = location.hash.replace(/^#/, '');
+      const params = new URLSearchParams(hash);
+      return params.get(name);
+    }
+    function parseAnchorYMD(s) {
+      if (!s || typeof s !== 'string') return null;
+      const parts = s.split('-');
+      if (parts.length !== 3) return null;
+      const [yy, mm, dd] = parts.map(n => Number(n));
+      if (!Number.isInteger(yy) || !Number.isInteger(mm) || !Number.isInteger(dd)) return null;
+      if (yy < 1900 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+      return { yy, mm, dd };
+    }
+    function getPrevDayFromAnchor(tz, anchorStr) {
+      const parsed = parseAnchorYMD(anchorStr);
+      let anchorDate;
+      if (parsed) {
+        anchorDate = new Date(Date.UTC(parsed.yy, parsed.mm - 1, parsed.dd, 5));
+      } else {
+        const now = new Date();
+        const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+        const parts = fmt.formatToParts(now);
+        const y = Number(parts.find(p=>p.type==='year').value);
+        const m = Number(parts.find(p=>p.type==='month').value);
+        const d = Number(parts.find(p=>p.type==='day').value);
+        anchorDate = new Date(Date.UTC(y, m - 1, d, 5));
+      }
+      const prev = new Date(anchorDate.getTime() - 24*60*60*1000);
       const yFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-      const yStr = yFmt.format(yest); // YYYY-MM-DD
+      const yStr = yFmt.format(prev); // YYYY-MM-DD
       const [Y,MM,DD] = yStr.split('-');
       return { Y, MM, DD, ymd: yStr, ymdCompact: `${Y}${MM}${DD}` };
     }
 
-    // --- Dev anchor helpers (no regex to keep this embed-safe) ---
-function getQueryParam(name) {
-  const params = new URLSearchParams(window.location.search);
-  return params.get(name);
-}
-// Also allow #anchor=YYYY-MM-DD and a hardcoded DEV fallback for environments that don't pass querystrings
-const DEV_ANCHOR = '2025-03-24'; // temporary dev anchor; set to null for prod
-function getHashParam(name) {
-  if (!location.hash) return null;
-  const hash = location.hash.replace(/^#/, '');
-  const params = new URLSearchParams(hash);
-  return params.get(name);
-}
-function getAnchor() {
-  return getQueryParam('anchor') || getHashParam('anchor') || DEV_ANCHOR;
-}
-function parseAnchorYMD(s) {
-  if (!s || typeof s !== 'string') return null;
-  const parts = s.split('-');
-  if (parts.length !== 3) return null;
-  const [yy, mm, dd] = parts.map(n => Number(n));
-  if (!Number.isInteger(yy) || !Number.isInteger(mm) || !Number.isInteger(dd)) return null;
-  if (yy < 1900 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-  return { yy, mm, dd };
-}
-function getPrevDayFromAnchor(tz, anchorStr) {
-  const parsed = parseAnchorYMD(anchorStr);
-  let anchorDate;
-  if (parsed) {
-    anchorDate = new Date(Date.UTC(parsed.yy, parsed.mm - 1, parsed.dd, 5));
-  } else {
-    const now = new Date();
-    const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-    const parts = fmt.formatToParts(now);
-    const y = Number(parts.find(p=>p.type==='year').value);
-    const m = Number(parts.find(p=>p.type==='month').value);
-    const d = Number(parts.find(p=>p.type==='day').value);
-    anchorDate = new Date(Date.UTC(y, m - 1, d, 5));
-  }
-  const prev = new Date(anchorDate.getTime() - 24*60*60*1000);
-  const yFmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-  const yStr = yFmt.format(prev); // YYYY-MM-DD
-  const [Y,MM,DD] = yStr.split('-');
-  return { Y, MM, DD, ymd: yStr, ymdCompact: `${Y}${MM}${DD}` };
-}
+    const tz = 'America/New_York';
+    const anchor = getQueryParam('anchor') || getHashParam('anchor') || DEV_ANCHOR;
+    const { Y, MM, DD, ymd, ymdCompact } = getPrevDayFromAnchor(tz, anchor);
+    const sub = anchor
+      ? `Anchor Date ${anchor} → showing PREVIOUS day: ${ymd} (America/New_York)`
+      : `Showing results for ${ymd} (America/New_York)`;
+    document.getElementById('subtitle').textContent = sub;
 
-const tz = 'America/New_York';
-const anchor = getAnchor();
-const { Y, MM, DD, ymd, ymdCompact } = getPrevDayFromAnchor(tz, anchor);
-const sub = anchor ? `Anchor Date ${anchor} → showing PREVIOUS day: ${ymd} (America/New_York)` : `Showing results for ${ymd} (America/New_York)`;
-document.getElementById('subtitle').textContent = sub;
-
-    // Data sources (try community NCAA API first, fall back to ESPN "hidden" API)
+    // --- Data sources ---
     const sources = [
       {
         name: 'NCAA API (henrygd)',
         url: `https://ncaa-api.henrygd.me/scoreboard/basketball-men/d1/${Y}/${MM}/${DD}`,
         mapper: (json) => {
-          // json.games: array; each has teams: [{name, score, isHome}], status, final
           if (!json || !Array.isArray(json.games)) return [];
           return json.games
             .filter(g => g.final === true || /final/i.test(g.status || ''))
@@ -199,6 +151,8 @@ document.getElementById('subtitle').textContent = sub;
                 hScore: Number(home?.score ?? NaN),
                 aLogo: null,
                 hLogo: null,
+                aRank: null,
+                hRank: null,
                 status: 'Final'
               };
             });
@@ -218,6 +172,8 @@ document.getElementById('subtitle').textContent = sub;
             const isFinal = /final/i.test(status);
             const aLogo = away?.team?.logos?.[0]?.href || away?.team?.logo || null;
             const hLogo = home?.team?.logos?.[0]?.href || home?.team?.logo || null;
+            const aRank = away?.team?.rank ?? away?.team?.curatedRank?.current ?? null;
+            const hRank = home?.team?.rank ?? home?.team?.curatedRank?.current ?? null;
             return {
               away: away?.team?.shortDisplayName || away?.team?.displayName || 'Away',
               home: home?.team?.shortDisplayName || home?.team?.displayName || 'Home',
@@ -225,6 +181,8 @@ document.getElementById('subtitle').textContent = sub;
               hScore: Number(home?.score ?? NaN),
               aLogo,
               hLogo,
+              aRank: (Number(aRank) >= 1 && Number(aRank) <= 25) ? Number(aRank) : null,
+              hRank: (Number(hRank) >= 1 && Number(hRank) <= 25) ? Number(hRank) : null,
               status: isFinal ? 'Final' : status
             };
           }).filter(g => g.status === 'Final');
@@ -249,14 +207,43 @@ document.getElementById('subtitle').textContent = sub;
       throw new Error('No data sources responded');
     }
 
-    function render(games, meta) {
+    async function fetchRankMap() {
+      // Always fetch ESPN scoreboard to build a rank map, so even NCAA source gets ranks.
+      try {
+        const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=${ymdCompact}&group=50&limit=500`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('rank HTTP ' + res.status);
+        const data = await res.json();
+        const map = Object.create(null);
+        (data?.events || []).forEach(e => {
+          const c = e.competitions?.[0];
+          (c?.competitors || []).forEach(t => {
+            const nm = (t?.team?.shortDisplayName || t?.team?.displayName || '').trim().toLowerCase();
+            const r = t?.team?.rank ?? t?.team?.curatedRank?.current ?? null;
+            if (!nm) return;
+            const rn = Number(r);
+            if (rn >= 1 && rn <= 25) map[nm] = rn;
+          });
+        });
+        return map;
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function nameWithRank(name, rank) {
+      return (rank && rank >= 1 && rank <= 25)
+        ? `<span class="rank">#${rank}</span>${name}`
+        : `${name}`;
+    }
+
+    function render(games, rankMap) {
       // Sort by winner margin desc
       games.sort((a,b) => Math.abs((b.hScore - b.aScore)) - Math.abs((a.hScore - a.aScore)));
       // Ticker with winner highlighted in gold
       const ticker = document.getElementById('ticker');
       ticker.innerHTML = '';
 
-      function logoTag(url, size='md') {
+      function logoTag(url, size='sm') {
         if (!url) return '';
         const cls = size === 'sm' ? 'logo-sm' : 'logo';
         return `<img class="${cls}" src="${url}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
@@ -265,45 +252,29 @@ document.getElementById('subtitle').textContent = sub;
       function segment(g) {
         const a = Number(g.aScore), h = Number(g.hScore);
         const awayWins = a > h;
-        const aLine = `${logoTag(g.aLogo,'sm')}${g.away} ${g.aScore}`;
-        const hLine = `${logoTag(g.hLogo,'sm')}${g.home} ${g.hScore}`;
+        const aRank = g.aRank ?? rankMap[(g.away||'').trim().toLowerCase()] ?? null;
+        const hRank = g.hRank ?? rankMap[(g.home||'').trim().toLowerCase()] ?? null;
+        const aName = nameWithRank(g.away, aRank);
+        const hName = nameWithRank(g.home, hRank);
+        const aLine = `${logoTag(g.aLogo,'sm')}${aName} ${g.aScore}`;
+        const hLine = `${logoTag(g.hLogo,'sm')}${hName} ${g.hScore}`;
         const top = awayWins ? `<span class="win">${aLine}</span>` : aLine;
         const bottom = awayWins ? hLine : `<span class="win">${hLine}</span>`;
         return `<span class="seg">${top}<br>${bottom}</span>`;
       }
 
       const segs = games.map(segment);
-      const joined = segs.join(' | ');
+      const joined = segs.join('');
       ticker.innerHTML = (' ' + joined + ' ').repeat(6);
-
-      // Table
-      const tbody = document.getElementById('rows');
-      tbody.innerHTML = '';
-      games.forEach(g => {
-        const tr = document.createElement('tr');
-        const a = Number(g.aScore), h = Number(g.hScore);
-        const awayWins = a > h;
-        const awayName = awayWins ? `<span class="win">${g.away}</span>` : `${g.away}`;
-        const homeName = !awayWins ? `<span class="win">${g.home}</span>` : `${g.home}`;
-        tr.innerHTML = `
-          <td>${logoTag(g.aLogo)}${awayName} <span class="sep">·</span> <strong>${g.aScore}</strong></td>
-          <td>${logoTag(g.hLogo)}${homeName} <span class="sep">·</span> <strong>${g.hScore}</strong></td>
-          <td class="final">${g.status}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      const src = document.getElementById('sourceNote');
-      src.innerHTML = `Source: <span class="chip">${meta.source}</span> · <a href="${meta.url}" target="_blank" rel="noopener noreferrer">view JSON</a>`;
     }
 
     (async () => {
       try {
-        const { games, source, url } = await fetchFirstWorking();
-        render(games, { source, url });
+        const [{ games }, rankMap] = await Promise.all([fetchFirstWorking(), fetchRankMap()]);
+        render(games, rankMap || {});
       } catch (e) {
-        document.getElementById('rows').innerHTML = '<tr><td colspan="3">Failed to load scores. Try refreshing later.</td></tr>';
-        document.getElementById('sourceNote').textContent = '';
+        const ticker = document.getElementById('ticker');
+        ticker.textContent = 'Failed to load scores. Try refreshing later.';
       }
     })();
   </script>
