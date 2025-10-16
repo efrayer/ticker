@@ -35,7 +35,9 @@
     /* Segments & divider (spans both lines) */
     .bur-ticker .seg { position: relative; display: inline-block; padding: 0 14px; line-height: 1.15; }
     .bur-ticker .seg::after {
-      content: ""; position: absolute; right: 0; top: -2px; bottom: -2px; width: 1px; background: rgba(0,0,0,.12);
+      content: ""; position: absolute; right: 0; top: -2px; bottom: -2px;
+      width: 2px; /* darker, more prominent divider */
+      background: color-mix(in srgb, currentColor 45%, transparent);
     }
     .bur-ticker .seg:last-child::after { display: none; }
 
@@ -61,14 +63,32 @@
 
     /* Dark mode adjustments */
     @media (prefers-color-scheme: dark) {
-      .bur-ticker .seg::after { background: rgba(255,255,255,.18); }
+      .bur-ticker .seg::after { background: color-mix(in srgb, #fff 45%, transparent); }
       .bur-ticker .rank { border-color: color-mix(in srgb, #fff 20%, transparent); background: color-mix(in srgb, #fff 7%, transparent); }
       .bur-ticker.fixed-top { background: var(--bur-ticker-bg, rgba(10,10,10,.6)); border-bottom-color: rgba(255,255,255,.18); }
     }
-      .bur-ticker .rank {
-        border-color: color-mix(in srgb, #fff 20%, transparent);
-        background: color-mix(in srgb, #fff 7%, transparent);
-      }
+
+    /* Force LIGHT theme for ticker regardless of OS */
+    .bur-ticker.force-light .seg::after { background: rgba(0,0,0,.45) !important; }
+    .bur-ticker.force-light .rank {
+      border-color: rgba(0,0,0,.2) !important;
+      background: rgba(0,0,0,.06) !important;
+      color: inherit !important;
+    }
+    .bur-ticker.force-light.fixed-top {
+      background: var(--bur-ticker-bg, rgba(255,255,255,.72)) !important;
+      border-bottom-color: rgba(0,0,0,.12) !important;
+    }
+
+    /* Optional: Force DARK theme regardless of OS */
+    .bur-ticker.force-dark .seg::after { background: rgba(255,255,255,.45) !important; }
+    .bur-ticker.force-dark .rank {
+      border-color: rgba(255,255,255,.2) !important;
+      background: rgba(255,255,255,.07) !important;
+    }
+    .bur-ticker.force-dark.fixed-top {
+      background: var(--bur-ticker-bg, rgba(10,10,10,.6)) !important;
+      border-bottom-color: rgba(255,255,255,.18) !important;
     }
   </style>
 </head>
@@ -157,6 +177,19 @@
       };
       adjust();
       window.addEventListener('resize', adjust);
+    })();
+
+    // --- Forced theme (query ?theme=light|dark or add .force-light/.force-dark to container) ---
+    function getForcedTheme(){
+      const t = (getQueryParam('theme')||'').toLowerCase();
+      if (t === 'light' || t === 'dark') return t;
+      return null;
+    }
+    (function applyForcedTheme(){
+      const root = document.querySelector('.bur-ticker');
+      const t = getForcedTheme();
+      if (!root || !t) return;
+      root.classList.add('force-' + t);
     })();
 
     // --- Data sources (ESPN first to capture ranks) ---
